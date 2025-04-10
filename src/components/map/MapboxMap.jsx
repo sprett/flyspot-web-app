@@ -1,63 +1,149 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import Upload from './Upload';
+import Map from 'react-map-gl/mapbox';
+import kml from 'togeojson'; // Import the togeojson library
 
-const Map = () => {
+const MapboxMap = () => {
   // Reference to the map container
   const mapContainerRef = useRef(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
+
+  // Declare state to track file upload and errors
+  const [isFileLoaded, setIsFileLoaded] = useState(false);
 
   useEffect(() => {
     // Set your Mapbox access token here
     mapboxgl.accessToken = 'pk.eyJ1IjoiZGlub2giLCJhIjoiY204NXFtdXVvMTl2OTJrcjRveXY5djBxayJ9.DJbLLOam3jot6W1wQc4MBQ';
 
-    // Initialize the map instance with satellite imagery style
-    const map = new mapboxgl.Map({
-      container: mapContainerRef.current,           // Reference to the container element
-      style: 'mapbox://styles/mapbox/standard-satellite', 
-      projection: 'globe', // Updated to use satellite imagery
-      center: [-74.5, 40],                           // Starting position [lng, lat]
-      zoom: 9                                        // Starting zoom level
-    });
-
-    // Once the map loads, add DEM source and enable 3D terrain
-    map.on('load', () => {
-      // Add the DEM source for terrain data
-      map.addSource('mapbox-dem', {
-        type: 'raster-dem',
-        url: 'mapbox://mapbox.terrain-rgb',
-        tileSize: 512,
-        maxzoom: 14
-      });
-
-      // Enable 3D terrain with an exaggeration
-      map.setTerrain({source: 'mapbox-dem', exaggeration: 1.5});
-
-      // Optional: Add a sky layer for a more immersive 3D effect
-      map.addLayer({
-        id: 'sky',
-        type: 'sky',
-        paint: {
-          'sky-type': 'atmosphere',
-          'sky-atmosphere-sun': [0.0, 0.0],
-          'sky-atmosphere-sun-intensity': 15
-        }
-      });
-    });
-
-    // Optional: Add navigation controls (zoom and rotation)
-    map.addControl(new mapboxgl.NavigationControl(), 'top-right');
-
     // Clean up on unmount
-    return () => map.remove();
+    return () => {
+      window.map = null;
+    };
   }, []);
 
+  useEffect(() => {
+    if (window.map && window.deckFlightPathData) {
+      if (window.map.getLayer('path-extrusions-layer')) {
+        window.map.removeLayer('path-extrusions-layer');
+      }
+      if (window.map.getSource('path-extrusions')) {
+        window.map.removeSource('path-extrusions');
+      }
+  
+      const segments = window.deckFlightPathData.map((pathData) => {
+        return pathData.path.map((coord, i) => {
+          if (i < pathData.path.length - 1) {
+            const [lon1, lat1, alt1] = coord;
+            const [lon2, lat2, alt2] = pathData.path[i + 1];
+            return {
+              type: 'Feature',
+              geometry: {
+                type: 'Polygon',
+                coordinates: [
+                  [
+                    [lon1, lat1],
+                    [lon2, lat2],
+                    [lon2, lat2],
+                    [lon1, lat1]
+                  ]
+                ]
+              },
+              properties: {
+                altitude: alt2
+              }
+            };
+          }
+          return null;
+        }).filter(Boolean);
+      }).flat();
+
+      window.map.addSource('path-extrusions', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: segments }
+      });
+
+      window.map.addLayer({
+        id: 'path-extrusions-layer',
+        type: 'fill-extrusion',
+        source: 'path-extrusions',
+        paint: {
+          'fill-extrusion-color': '#FF6347',
+          'fill-extrusion-height': ['get', 'altitude'],
+          'fill-extrusion-base': 0,
+          'fill-extrusion-opacity': 0.8
+        }
+      });
+
+      setIsFileLoaded(true);
+    }
+  }, [window.deckFlightPathData, isFileLoaded]);
+
   return (
-    // The container where the map will be rendered
-    <div
-      ref={mapContainerRef}
-      style={{ width: '100%', height: '100vh' }}
-    />
+    <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
+      <Map
+        mapboxAccessToken={mapboxgl.accessToken}
+        mapStyle="mapbox://styles/mapbox/standard-satellite"
+        projection={{ name: 'globe' }}
+        terrain={{ source: 'mapbox-dem' }}
+        onLoad={(e) => {
+          const map = e.target;
+          map.addSource('mapbox-dem', {
+            type: 'raster-dem',
+            url: 'mapbox://mapbox.terrain-rgb',
+            tileSize: 512,
+            maxzoom: 14
+          });
+          map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+          map.addLayer({
+            id: 'sky',
+            type: 'sky',
+            paint: {
+              'sky-type': 'atmosphere',
+              'sky-atmosphere-sun': [0.0, 0.0],
+              'sky-atmosphere-sun-intensity': 15
+            }
+          });
+          window.map = map;
+        }}
+      />
+      <button
+        onClick={() => setUploadOpen(true)}
+        style={{
+          position: 'absolute',
+          top: '10px',
+          right: '10px',
+          padding: '10px 15px',
+          zIndex: 1
+        }}
+        className="bg-cyan-500 text-white rounded shadow-md"
+      >
+        Upload
+      </button>
+      {uploadOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          onClick={() => setUploadOpen(false)}
+        >
+          <div onClick={(e) => e.stopPropagation()}>
+            <Upload onUploadComplete={() => setUploadOpen(false)} />
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
-export default Map;
+export default MapboxMap;

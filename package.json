@@ -3,15 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@deck.gl/core": "^9.1.8",
+    "@deck.gl/layers": "^9.1.8",
+    "@deck.gl/react": "^9.1.8",
+    "@mapbox/leaflet-omnivore": "^0.3.4",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
+    "@tmcw/togeojson": "^7.1.0",
+    "leaflet": "^1.9.4",
     "mapbox-gl": "^3.11.0",
+    "maplibre-gl": "^5.3.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-map-gl": "^8.0.3",
     "react-scripts": "5.0.1",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "wgsl_reflect": "^1.2.0"
   },
   "scripts": {
     "start": "react-scripts start",
