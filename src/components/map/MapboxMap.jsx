@@ -25,13 +25,7 @@ const MapboxMap = () => {
 
   useEffect(() => {
     if (window.map && window.deckFlightPathData) {
-      if (window.map.getLayer('path-extrusions-layer')) {
-        window.map.removeLayer('path-extrusions-layer');
-      }
-      if (window.map.getSource('path-extrusions')) {
-        window.map.removeSource('path-extrusions');
-      }
-  
+      
       const segments = window.deckFlightPathData.map((pathData) => {
         return pathData.path.map((coord, i) => {
           if (i < pathData.path.length - 1) {
@@ -59,23 +53,6 @@ const MapboxMap = () => {
         }).filter(Boolean);
       }).flat();
 
-      window.map.addSource('path-extrusions', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: segments }
-      });
-
-      window.map.addLayer({
-        id: 'path-extrusions-layer',
-        type: 'fill-extrusion',
-        source: 'path-extrusions',
-        paint: {
-          'fill-extrusion-color': '#FF6347',
-          'fill-extrusion-height': ['get', 'altitude'],
-          'fill-extrusion-base': 0,
-          'fill-extrusion-opacity': 0.8
-        }
-      });
-
       setIsFileLoaded(true);
     }
   }, [window.deckFlightPathData, isFileLoaded]);
@@ -86,6 +63,15 @@ const MapboxMap = () => {
         mapboxAccessToken={mapboxgl.accessToken}
         mapStyle="mapbox://styles/mapbox/standard-satellite"
         projection={{ name: 'globe' }}
+        initialViewState={{
+          longitude: 10,
+          latitude: 50,
+          zoom: 3,
+          pitch: 0,
+          bearing: 0
+        }}
+        maxPitch={60}
+      
         terrain={{ source: 'mapbox-dem' }}
         onLoad={(e) => {
           const map = e.target;
@@ -105,6 +91,8 @@ const MapboxMap = () => {
               'sky-atmosphere-sun-intensity': 15
             }
           });
+
+          map.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
           window.map = map;
         }}
       />

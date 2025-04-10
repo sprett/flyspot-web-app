@@ -31,168 +31,181 @@ function Upload({ onUploadComplete }) {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const kmlText = event.target.result;
-      const parser = new DOMParser();
-      const kmlDom = parser.parseFromString(kmlText, 'text/xml');
-      const geojson = kml(kmlDom);
+      try {
+        const kmlText = event.target.result;
+        const parser = new DOMParser();
+        const kmlDom = parser.parseFromString(kmlText, 'text/xml');
+        const geojson = kml(kmlDom);
 
-      const map = window.map;
-      if (!map) {
-        console.error("Map is not initialized");
-        return;
-      }
-
-      if (map.getLayer('kml-layer')) {
-        map.removeLayer('kml-layer');
-      }
-      if (map.getSource('kml-source')) {
-        map.removeSource('kml-source');
-      }
-
-      if (map.getLayer('altitude-gradient-line')) {
-        map.removeLayer('altitude-gradient-line');
-      }
-      if (map.getSource('path-extrusions')) {
-        map.removeSource('path-extrusions');
-      }
-      if (map.getLayer('path-extrusions')) {
-        map.removeLayer('path-extrusions');
-      }
-
-      geojson.features.forEach((feature) => {
-        if (!feature.geometry || feature.geometry.type !== 'LineString') return;
-
-        const coords = feature.geometry.coordinates;
-        const segments = [];
-
-        function haversineDistance([lon1, lat1], [lon2, lat2]) {
-          const R = 6371000; // Earth radius in meters
-          const toRad = angle => angle * Math.PI / 180;
-          const dLat = toRad(lat2 - lat1);
-          const dLon = toRad(lon2 - lon1);
-          const a = Math.sin(dLat/2)**2 +
-                    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-                    Math.sin(dLon/2)**2;
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          return R * c;
+        const map = window.map;
+        if (!map) {
+          console.error("Map is not initialized");
+          setError("Map is not initialized");
+          return;
         }
 
-        for (let i = 0; i < coords.length - 1; i++) {
-          const [lon1, lat1, alt1] = coords[i];
-          const [lon2, lat2, alt2] = coords[i + 1];
+        // Ensure proper cleanup of any existing layers and sources
+        // First, remove layers that depend on sources
+        if (map.getLayer('kml-layer')) {
+          map.removeLayer('kml-layer');
+        }
+        if (map.getLayer('altitude-gradient-line')) {
+          map.removeLayer('altitude-gradient-line');
+        }
+        if (map.getLayer('path-extrusions')) {
+          map.removeLayer('path-extrusions');
+        }
+        
+        // Then remove the sources
+        if (map.getSource('kml-source')) {
+          map.removeSource('kml-source');
+        }
+        if (map.getSource('altitude-gradient-line')) {
+          map.removeSource('altitude-gradient-line');
+        }
+        if (map.getSource('path-extrusions')) {
+          map.removeSource('path-extrusions');
+        }
 
-          const distance = haversineDistance([lon1, lat1], [lon2, lat2]);
+        geojson.features.forEach((feature) => {
+          if (!feature.geometry || feature.geometry.type !== 'LineString') return;
 
-          // Skip if altitude is missing or jump is too big or spatial gap is large
-          if (
-            alt1 == null || alt2 == null ||
-            Math.abs(alt2 - alt1) > 1000 ||
-            distance > 200 // skip segments longer than 2km
-          ) {
-            continue;
+          const coords = feature.geometry.coordinates;
+          const segments = [];
+
+          function haversineDistance([lon1, lat1], [lon2, lat2]) {
+            const R = 6371000; // Earth radius in meters
+            const toRad = angle => angle * Math.PI / 180;
+            const dLat = toRad(lat2 - lat1);
+            const dLon = toRad(lon2 - lon1);
+            const a = Math.sin(dLat/2)**2 +
+                      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                      Math.sin(dLon/2)**2;
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
           }
 
-          segments.push({
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: [
-                [lon1, lat1],
-                [lon2, lat2]
-              ]
-            },
-            properties: {
-              altitudeChange: alt2 - alt1
+          for (let i = 0; i < coords.length - 1; i++) {
+            const [lon1, lat1, alt1] = coords[i];
+            const [lon2, lat2, alt2] = coords[i + 1];
+
+            const distance = haversineDistance([lon1, lat1], [lon2, lat2]);
+
+            // Skip if altitude is missing or jump is too big or spatial gap is large
+            if (
+              alt1 == null || alt2 == null ||
+              Math.abs(alt2 - alt1) > 1000 ||
+              distance > 200 // skip segments longer than 200m
+            ) {
+              continue;
             }
-          });
-        }
 
-        feature.properties.segmentLines = segments;
-      });
+            segments.push({
+              type: 'Feature',
+              geometry: {
+                type: 'LineString',
+                coordinates: [
+                  [lon1, lat1],
+                  [lon2, lat2]
+                ]
+              },
+              properties: {
+                altitudeChange: alt2 - alt1
+              }
+            });
+          }
 
-      const gradientLineData = {
-        type: 'FeatureCollection',
-        features: geojson.features.flatMap(f => f.properties.segmentLines || [])
-      };
-
-      const pathData = geojson.features.flatMap((feature) => {
-        if (!feature.geometry || feature.geometry.type !== 'LineString') return [];
-        return [{
-          path: feature.geometry.coordinates,
-          color: [0, 120, 255], // optional static color
-          name: 'Flight Path'
-        }];
-      });
-
-      window.deckFlightPathData = pathData;
-      if (window.map && pathData.length > 0) {
-        const bounds = new mapboxgl.LngLatBounds();
-      
-        pathData.forEach(({ path }) => {
-          path.forEach(coord => {
-            bounds.extend([coord[0], coord[1]]);
-          });
+          feature.properties.segmentLines = segments;
         });
-      
-        if (!bounds.isEmpty()) {
-          window.map.fitBounds(bounds, { padding: 40, pitch: 45, bearing: 0 });
+
+        const gradientLineData = {
+          type: 'FeatureCollection',
+          features: geojson.features.flatMap(f => f.properties.segmentLines || [])
+        };
+
+        const pathData = geojson.features.flatMap((feature) => {
+          if (!feature.geometry || feature.geometry.type !== 'LineString') return [];
+          return [{
+            path: feature.geometry.coordinates,
+            color: [0, 120, 255], // optional static color
+            name: 'Flight Path'
+          }];
+        });
+
+        window.deckFlightPathData = pathData;
+        if (map && pathData.length > 0) {
+          const bounds = new mapboxgl.LngLatBounds();
+        
+          pathData.forEach(({ path }) => {
+            path.forEach(coord => {
+              bounds.extend([coord[0], coord[1]]);
+            });
+          });
+        
+          if (!bounds.isEmpty()) {
+            map.fitBounds(bounds, { padding: 40, pitch: 45, bearing: 0});
+          }
         }
-      } // store globally for DeckGL access
 
-      map.addSource('kml-source', {
-        type: 'geojson',
-        data: gradientLineData
-      });
+        // Now add the new source and layer - only after cleanup is complete
+        map.addSource('kml-source', {
+          type: 'geojson',
+          data: gradientLineData
+        });
 
-      // Add the gradient line layer
-      map.addLayer({
-        id: 'altitude-gradient-line',
-        type: 'line',
-        source: 'kml-source',
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round'
-        },
-        paint: {
-          'line-width': 4,
-          'line-color': [
-            'interpolate',
-            ['linear'],
-            ['get', 'altitudeChange'],
-            -10, '#d7191c',
-             0, '#ffffff',
-            10, '#1a9641'
-          ]
+        // Add the gradient line layer
+        map.addLayer({
+          id: 'altitude-gradient-line',
+          type: 'line',
+          source: 'kml-source',
+          layout: {
+            'line-cap': 'round',
+            'line-join': 'round'
+          },
+          paint: {
+            'line-width': 4,
+            'line-color': [
+              'interpolate',
+              ['linear'],
+              ['get', 'altitudeChange'],
+              -5, '#d7191c',
+               0, '#ffffff',
+              5, '#1a9641'
+            ]
+          }
+        });
+
+        const bounds = new mapboxgl.LngLatBounds();
+        if (!geojson.features || geojson.features.length === 0) {
+          console.warn("No features found in the uploaded KML file.");
+          return;
         }
-      });
+        geojson.features.forEach((feature) => {
+          if (!feature.geometry) return;
+          const coords = feature.geometry.coordinates;
+          const type = feature.geometry.type;
 
-      const bounds = new mapboxgl.LngLatBounds();
-      if (!geojson.features || geojson.features.length === 0) {
-        console.warn("No features found in the uploaded KML file.");
-        return;
-      }
-      geojson.features.forEach((feature) => {
-        if (!feature.geometry) return;
-        const coords = feature.geometry.coordinates;
-        const type = feature.geometry.type;
+          if (type === 'Point') {
+            bounds.extend(coords);
+          } else if (type === 'LineString' || type === 'MultiPoint') {
+            coords.forEach(c => bounds.extend(c));
+          } else if (type === 'Polygon') {
+            coords[0].forEach(c => bounds.extend(c));
+          } else if (type === 'MultiLineString' || type === 'MultiPolygon') {
+            coords.flat(2).forEach(c => bounds.extend(c));
+          }
+        });
 
-        if (type === 'Point') {
-          bounds.extend(coords);
-        } else if (type === 'LineString' || type === 'MultiPoint') {
-          coords.forEach(c => bounds.extend(c));
-        } else if (type === 'Polygon') {
-          coords[0].forEach(c => bounds.extend(c));
-        } else if (type === 'MultiLineString' || type === 'MultiPolygon') {
-          coords.flat(2).forEach(c => bounds.extend(c));
+        const hasValidBounds = bounds.isEmpty() === false && bounds.getNorthEast() && bounds.getSouthWest();
+        if (hasValidBounds) {
+          map.fitBounds(bounds, { padding: 40 });
         }
-      });
-
-      const hasValidBounds = bounds.isEmpty() === false && bounds.getNorthEast() && bounds.getSouthWest();
-      if (hasValidBounds) {
-        map.fitBounds(bounds, { padding: 40 });
-      }
-      if (onUploadComplete) {
-        onUploadComplete();
+        if (onUploadComplete) {
+          onUploadComplete();
+        }
+      } catch (err) {
+        console.error("Error processing KML file:", err);
+        setError("Error processing file: " + err.message);
       }
     };
 
@@ -343,25 +356,6 @@ function Upload({ onUploadComplete }) {
               </div>
             </div>
           )}
-
-          {/* <div className="mt-6 grid grid-cols-2 gap-4">
-            <button className="group/btn relative overflow-hidden rounded-xl bg-gradient-to-r from-cyan-500 to-sky-500 p-px font-medium text-white shadow-[0_1000px_0_0_hsl(0_0%_100%_/_0%)_inset] transition-colors hover:shadow-[0_1000px_0_0_hsl(0_0%_100%_/_2%)_inset]">
-              <span className="relative flex items-center justify-center gap-2 rounded-xl bg-slate-950/50 px-4 py-2 transition-colors group-hover/btn:bg-transparent">
-                Upload More
-                <svg className="h-4 w-4 transition-transform duration-300 group-hover/btn:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                  ></path>
-                </svg>
-              </span>
-            </button>
-            <button className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 font-medium text-white transition-colors hover:bg-slate-800">
-              Clear All
-            </button>
-          </div> */}
         </div>
       </div>
     </div>
