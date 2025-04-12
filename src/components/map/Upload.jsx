@@ -9,6 +9,7 @@ function Upload({ onUploadComplete }) {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [isDragActive, setIsDragActive] = useState(false);
   const [error, setError] = useState(null);
+  
 
   // Handle file selection and simulate upload progress
   const handleFileChange = (e) => {
@@ -152,6 +153,7 @@ function Upload({ onUploadComplete }) {
           type: 'geojson',
           data: gradientLineData
         });
+        
 
         // Add the gradient line layer
         map.addLayer({
@@ -168,9 +170,9 @@ function Upload({ onUploadComplete }) {
               'interpolate',
               ['linear'],
               ['get', 'altitudeChange'],
-              -5, '#d7191c',
+              -3, '#d7191c',
                0, '#ffffff',
-              5, '#1a9641'
+              3, '#1a9641'
             ]
           }
         });

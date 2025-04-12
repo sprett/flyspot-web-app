@@ -4,6 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import Upload from './Upload';
 import Map from 'react-map-gl/mapbox';
 import kml from 'togeojson'; // Import the togeojson library
+import { fetchParaglidingSpots } from '../../data/paraglidingSpots/ParaglidingspotAPI';
 
 const MapboxMap = () => {
   // Reference to the map container
@@ -12,6 +13,7 @@ const MapboxMap = () => {
 
   // Declare state to track file upload and errors
   const [isFileLoaded, setIsFileLoaded] = useState(false);
+  const [spotsGeoJSON, setSpotsGeoJSON] = useState(null);
 
   useEffect(() => {
     // Set your Mapbox access token here
@@ -94,6 +96,9 @@ const MapboxMap = () => {
 
           map.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
           window.map = map;
+
+          
+   
         }}
       />
       <button
